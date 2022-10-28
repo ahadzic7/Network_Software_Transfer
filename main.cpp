@@ -3,7 +3,10 @@
 #include <list>
 #include <ctime>
 
-void readDataGraph(std::vector<std::list<int>> &graphOld, int connectionsOld) {
+typedef std::vector<std::list<int>> UnweightedG;
+typedef std::vector<std::list<std::pair<int, int>>> WeightedG;
+
+void readDataGraph(UnweightedG &graphOld, int connectionsOld) {
     for(int i = 0; i < connectionsOld; i++) {
         int x, y;
         scanf("%d %d", &x, &y);
@@ -29,17 +32,13 @@ void readDataFS(std::vector<bool> &fs, int fServers, std::vector<int> &fastServe
     }
 }
 
-void readDataGraph2(std::vector<std::list<std::pair<int, int>>> &graphNew, int connectionsNew) {
+void readDataGraph2(WeightedG &graphNew, int connectionsNew) {
     for(int i = 0; i < connectionsNew; i++) {
         int x, y, z;
         scanf("%d %d %d", &x, &y, &z);
         graphNew[x].emplace_back(y, z);
         graphNew[y].emplace_back(x, z);
     }
-}
-
-void chooseFastServers(const std::vector<std::list<int>> &graphOld, std::vector<std::list<std::pair<int, int>>> &graphNew, const std::vector<int> &fastServers, int nodes) {
-
 }
 
 std::vector<int> succesor(const std::vector<int> &T, int n) {
@@ -58,11 +57,143 @@ std::vector<int> succesor(const std::vector<int> &T, int n) {
     return U;
 }
 
+int checkToplogy(const WeightedG &graphNew, const std::vector<bool> &choosenServers, int nodes) {
+
+    int cost = 0, edgesTopology = 0;
+    for(const auto &edges: graphNew) {
+        for(const auto server: edges) {
+            if(choosenServers[server.first]) {
+
+                if(edgesTopology > nodes)
+                    return -1;
+
+                edgesTopology++;
+                cost += server.second;
+            }
+        }
+    }
+
+    if(edgesTopology / 2 == nodes)
+        return cost / 2;
+
+    return -1;
+}
+
+////check toplogy here
+//for(int server: choosenFast)
+//choosenServers[fastServers[server]] = true;
+//
+//for(int server: choosenSlow)
+//choosenServers[slowServers[server]] = true;
+
+void chooseFastServers(const WeightedG &graphNew, const std::vector<int> &fastServers, int nodes) {
+    std::vector<int>choosenFast(nodes);
+    for(int i = 1; i < nodes; i++)
+        choosenFast[i] = i;
+
+    const int FAST_LIMIT (fastServers.size());
+    int minCost = 1e3; //todo: set this to correct max value
+    bool stopSearch = false;
+
+    while (true) {
+        std::vector<bool> choosenServers(graphNew.size());
+
+        try {
+
+            for(int server: choosenFast)
+                choosenServers[fastServers[server]] = true;
+
+            int cost (checkToplogy(graphNew, choosenServers, nodes));
+
+            if(cost != -1)
+                stopSearch = true;
+            if(cost < minCost)
+                cost = minCost;
+
+            choosenFast = succesor(choosenFast, FAST_LIMIT);
+        }
+        catch (...) {
+            break;
+        }
+    }
+    if(stopSearch) {
+        //todo: stop the search topology found print results
+    }
+    else {
+        //todo: continue the search with slow servers
+    }
+}
+
+void chooseFastSlowServers(const WeightedG &graphNew, const std::vector<int> &fastServers, const std::vector<int> &slowServers,int nodes) {
+    const int SLOW_LIMIT (slowServers.size());
+    const int FAST_LIMIT (fastServers.size());
+
+    std::vector<int>choosenFast(nodes);
+    for(int i = 1; i < nodes; i++)
+        choosenFast[i] = i;
+    std::vector<int>fastCache(choosenFast);
+
+    std::vector<int>choosenSlow(1, 0);
+    std::vector<int>slowCache(1, 0);
+
+    int minCost = 1e3; //todo: set this to correct max value
+    bool stopSearch = false;
+
+    while (true) {
+
+        while (true) {
+            //check topology here
+            std::vector<bool> choosenServers(graphNew.size());
+            for(int server: choosenFast)
+                choosenServers[fastServers[server]] = true;
+            for(int server: choosenSlow)
+                choosenServers[slowServers[server]] = true;
+
+            int cost (checkToplogy(graphNew, choosenServers, nodes));
+
+            if(cost != -1)
+                stopSearch = true;
+            if(cost < minCost)
+                cost = minCost;
+
+            try {
+                choosenSlow = succesor(choosenSlow, SLOW_LIMIT);
+            }
+            catch (...) {
+                break;
+            }
+        }
+
+        try {
+            choosenFast = succesor(choosenFast, FAST_LIMIT);
+            choosenSlow = slowCache;
+        }
+        catch (...) {
+
+            if(stopSearch)
+                break;
+
+            fastCache.erase(fastCache.end() - 1);
+            slowCache.push_back(slowCache[slowCache.size() - 1] + 1);
+
+            if(fastCache.empty())
+                break;
+
+            choosenFast = fastCache;
+            choosenSlow = slowCache;
+        }
+    }
+
+    //todo: return the results
+}
+
+
+
 void solution() {
     int serversOld, connectionsOld;
     scanf("%d %d", &serversOld, &connectionsOld);
 
-    std::vector<std::list<int>> graphOld(serversOld, std::list<int>());
+    UnweightedG graphOld(serversOld, std::list<int>());
     readDataGraph(graphOld, connectionsOld);
 
     int serversNew, connectionsNew, fServers;
@@ -72,7 +203,7 @@ void solution() {
     std::vector<int> fastServers(fServers), slowServers(0);
     readDataFS(fs, fServers, fastServers, slowServers);
 
-    std::vector<std::list<std::pair<int, int>>> graphNew(serversNew, std::list<std::pair<int, int>>());
+    WeightedG graphNew(serversNew, std::list<std::pair<int, int>>());
     readDataGraph2(graphNew, connectionsNew);
 }
 
@@ -97,6 +228,7 @@ int main() {
             printf("%d ", el);
         printf("'");
         printf("\n");
+
         while (1) {
             printf("slow: '");
             for(int el: a)
@@ -110,6 +242,8 @@ int main() {
             }
             printf("\t");
         }
+
+
         printf("\n###");
 
         try {
