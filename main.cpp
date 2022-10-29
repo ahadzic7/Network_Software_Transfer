@@ -50,12 +50,12 @@ void readDataGraphOld(UnweightedG &graphOld, int connectionsOld, std::vector<int
         degreeHist[x]++;
         degreeHist[y]++;
     }
-
-    ogGraph = mulMatrix(mulMatrix(ogGraph, ogGraph), ogGraph);
+    oldTriangles = 0;
+    ogGraph = mulMatrix(mulMatrix(ogGraph, ogGraph), mulMatrix(ogGraph, ogGraph));
     int diagSum = 0;
     for(int i = 0; i < ogGraph.size(); i++)
         diagSum += ogGraph[i][i];
-    oldTriangles = diagSum / 6;
+    oldTriangles = diagSum / 8 - 8;
 
 }
 
@@ -142,6 +142,7 @@ int checkToplogy(const WeightedG &graphNew, const std::vector<bool> &choosenServ
 
     if(edgesTopology / 2 == links && cost / 2 < minCost) {
         //checking degrees
+        //printf("\nthis!\n");
         std::sort(degreeHist.begin(), degreeHist.end(), [](int x, int y) {return x > y;});
         std::sort(degreeHistOld.begin(), degreeHistOld.end(), [](int x, int y) {return x > y;});
         for(int i = 0; i < degreeHistOld.size(); i++)
@@ -149,13 +150,13 @@ int checkToplogy(const WeightedG &graphNew, const std::vector<bool> &choosenServ
                 return -1;
 
         //checking triangles
-//        testGraph = mulMatrix(mulMatrix(testGraph, testGraph), testGraph);
-//        int diagSum = 0;
-//        for(int i = 0; i < testGraph.size(); i++)
-//            diagSum += testGraph[i][i];
-//
-//        if(diagSum / 6 != oldTriangles)
-//            return -1;
+        testGraph = mulMatrix(mulMatrix(testGraph, testGraph), mulMatrix(testGraph, testGraph));
+        int diagSum = 0;
+        for(int i = 0; i < testGraph.size(); i++)
+            diagSum += testGraph[i][i];
+
+        if(diagSum / 8 - 8 != oldTriangles)
+            return -1;
 
 
         return cost / 2;
@@ -203,7 +204,7 @@ std::pair<int, int> chooseFastSlowServers(const WeightedG &graphNew, const std::
             int cost (checkToplogy(graphNew, choosenServers, links, degreeHistOld, minCost, oldTriangles));
             if(cost != -1 && cost < minCost) {
                 //printf("%d %d\n", choosenFast.size(), choosenSlow.size());
-//                print_choosen(fastServers, slowServers, choosenFast, choosenSlow);
+                //print_choosen(fastServers, slowServers, choosenFast, choosenSlow);
                 minCost = cost;
                 stopSearch = true;
             }
@@ -250,20 +251,8 @@ std::pair<int, int> chooseFastSlowServers(const WeightedG &graphNew, const std::
     return std::make_pair(-1, -1);
 }
 
-
-
-void findMinTopology(const WeightedG &graphNew, const std::vector<int> &fastServers, const std::vector<int> &slowServers,  std::vector<int> &degreeHistOld, const int nodes, const int links, const int oldTriangles) {
-    auto result(chooseFastSlowServers(graphNew, fastServers, slowServers, degreeHistOld, nodes, links, oldTriangles));
-
-    if(result.first != -1) {
-//        printf("Fast servers %d, min cost %d\n", result.second, result.first);
-        printf("%d %d", result.second, result.first);
-    }
-    else
-        printf("No topology was found!\n");
-}
-
 void solution() {
+
     int serversOld, connectionsOld;
     scanf("%d %d", &serversOld, &connectionsOld);
 
@@ -284,7 +273,15 @@ void solution() {
     WeightedG graphNew(serversNew, std::list<std::pair<int, int>>());
     readDataGraphNew(graphNew, connectionsNew);
 
-    findMinTopology(graphNew, fastServers, slowServers, degreeHist, serversOld, connectionsOld, oldTriangles);
+    auto result(chooseFastSlowServers(graphNew, fastServers, slowServers, degreeHist, serversOld, connectionsOld, oldTriangles));
+
+    if(result.first != -1) {
+//        printf("Fast servers %d, min cost %d\n", result.second, result.first);
+        printf("%d %d", result.second, result.first);
+    }
+    else
+        printf("No topology was found!\n");
+
 //    printf("%d", checkToplogy(graphNew, {false,false,false,true,true,true,false,false,false,true,false,true,false,false,false,false,true,false,false,true,false,true,false}, connectionsOld, degreeHist, 1e9, oldTriangles));
 //    printf("%d", checkToplogy(graphNew, {true,true,true,false,false,true,false,true,true,false,true,true,false,true,true}, connectionsOld, degreeHist));
 //    printf("%d", checkToplogy(graphNew, {false,true,true,false,false,false,true,true,true,true,false,false,false,true,true}, connectionsOld, degreeHist));
@@ -360,7 +357,7 @@ int main() {
 
     solution();
     end = clock();
-    printf("\nExecution time: %f", double ((end - start) / 1000.));
+//    printf("\nExecution time: %f", double ((end - start) / 1000.));
 
     return 0;
 }
