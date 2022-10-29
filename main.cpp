@@ -5,6 +5,7 @@
 #include <algorithm>
 
 typedef std::vector<std::list<int>> UnweightedG;
+typedef std::vector<std::vector<int>> MatrixG;
 typedef std::vector<std::list<std::pair<int, int>>> WeightedG;
 
 void print_choosen( const std::vector<int> &fastServers, const std::vector<int> &slowServers,  const std::vector<int> &choosenFast, const std::vector<int> &choosenSlow) {
@@ -19,34 +20,46 @@ void print_choosen( const std::vector<int> &fastServers, const std::vector<int> 
     printf("\n\n");
 }
 
-void readDataGraph(UnweightedG &graphOld, int connectionsOld, std::vector<int> &degreeHist) {
+MatrixG mulMatrix(const MatrixG &A, const MatrixG &B) {
+    const int size (A.size());
+    MatrixG C(size, std::vector<int>(size, 0));
+
+    for(int i = 0; i < size; i++) {
+        for(int j = 0; j < size; j++) {
+            for(int k = 0; k < size; k++) {
+                C[i][j] += A[i][k] * B[k][j];
+            }
+        }
+    }
+    return C;
+}
+
+void readDataGraphOld(UnweightedG &graphOld, int connectionsOld, std::vector<int> &degreeHist, int &oldTriangles) {
+    MatrixG ogGraph(graphOld.size(), std::vector<int>(graphOld.size(), 0));
+
     for(int i = 0; i < connectionsOld; i++) {
         int x, y;
         scanf("%d %d", &x, &y);
+
         graphOld[x].push_back(y);
         graphOld[y].push_back(x);
+
+        ogGraph[x][y] = 1;
+        ogGraph[y][x] = 1;
+
         degreeHist[x]++;
         degreeHist[y]++;
     }
+
+    ogGraph = mulMatrix(mulMatrix(ogGraph, ogGraph), ogGraph);
+    int diagSum = 0;
+    for(int i = 0; i < ogGraph.size(); i++)
+        diagSum += ogGraph[i][i];
+    oldTriangles = diagSum / 6;
+
 }
 
 void readDataFS(int fServers, std::vector<int> &fastServers, std::vector<int> &slowServers, int nodes) {
-//    for(int i = 0; i < fServers; i++) {
-//        int x;
-//        scanf("%d", &x);
-//
-//        int start = 0;
-//        if(!fastServers.empty())
-//            start = fastServers[fastServers.size() -1] + 1;
-//
-//        fastServers.emplace_back(x);
-//        for(int j = start; j < x; j++)
-//            slowServers.emplace_back(j);
-//    }
-//    if(fastServers.size() + slowServers.size() != nodes) {
-//        for(int j = fastServers[fastServers.size() - 1] + 1; j < nodes; j++)
-//            slowServers.emplace_back(j);
-//    }
     for(int i = 0; i < fServers; i++) {
         int x;
         scanf("%d", &x);
@@ -77,7 +90,7 @@ void readDataFS(int fServers, std::vector<int> &fastServers, std::vector<int> &s
 
 }
 
-void readDataGraph2(WeightedG &graphNew, int connectionsNew) {
+void readDataGraphNew(WeightedG &graphNew, int connectionsNew) {
     for(int i = 0; i < connectionsNew; i++) {
         int x, y, z;
         scanf("%d %d %d", &x, &y, &z);
@@ -102,32 +115,48 @@ std::vector<int> succesor(const std::vector<int> &T, int n) {
     return U;
 }
 
-int checkToplogy(const WeightedG &graphNew, const std::vector<bool> &choosenServers, int links, std::vector<int> &degreeHistOld) {
+
+int checkToplogy(const WeightedG &graphNew, const std::vector<bool> &choosenServers, int links, std::vector<int> &degreeHistOld, const int minCost, const int oldTriangles) {
 
     int cost = 0, edgesTopology = 0;
     std::vector<int> degreeHist(graphNew.size(), 0);
+    MatrixG testGraph(degreeHist.size(), std::vector<int>(degreeHist.size(), 0));
 
     for(int i = 0; i < graphNew.size(); i++) {
         if(choosenServers[i]) {
             for(const auto server: graphNew[i]) {
                 if(choosenServers[server.first]) {
-                    if(edgesTopology / 2 > links) {
-                        return -1;
-                    }
                     degreeHist[server.first]++;
                     edgesTopology++;
                     cost += server.second;
+
+                    testGraph[i][server.first] = 1;
+                    testGraph[server.first][i] = 1;
+
+                    if(cost / 2 > minCost || edgesTopology / 2 > links)
+                        return -1;
                 }
             }
         }
     }
 
-    if(edgesTopology / 2 == links) {
+    if(edgesTopology / 2 == links && cost / 2 < minCost) {
+        //checking degrees
         std::sort(degreeHist.begin(), degreeHist.end(), [](int x, int y) {return x > y;});
         std::sort(degreeHistOld.begin(), degreeHistOld.end(), [](int x, int y) {return x > y;});
         for(int i = 0; i < degreeHistOld.size(); i++)
             if(degreeHist[i] != degreeHistOld[i])
                 return -1;
+
+        //checking triangles
+//        testGraph = mulMatrix(mulMatrix(testGraph, testGraph), testGraph);
+//        int diagSum = 0;
+//        for(int i = 0; i < testGraph.size(); i++)
+//            diagSum += testGraph[i][i];
+//
+//        if(diagSum / 6 != oldTriangles)
+//            return -1;
+
 
         return cost / 2;
     }
@@ -136,60 +165,27 @@ int checkToplogy(const WeightedG &graphNew, const std::vector<bool> &choosenServ
     return -1;
 }
 
-
-int chooseFastServers(const WeightedG &graphNew, const std::vector<int> &fastServers, int nodes,  std::vector<int> &degreeHistOld) {
-    std::vector<int>choosenFast(nodes);
-    for(int i = 1; i < nodes; i++)
-        choosenFast[i] = i;
-
-    const int FAST_LIMIT (fastServers.size());
-    int minCost = 1e9; //todo: set this to correct max value
-    bool stopSearch = false;
-
-    while (true) {
-        std::vector<bool> choosenServers(graphNew.size());
-
-        try {
-
-            for(int server: choosenFast)
-                choosenServers[fastServers[server]] = true;
-
-            int cost (checkToplogy(graphNew, choosenServers, nodes, degreeHistOld));
-
-            if(cost != -1)
-                stopSearch = true;
-            if(cost < minCost)
-                minCost = cost;
-
-            choosenFast = succesor(choosenFast, FAST_LIMIT);
-        }
-        catch (...) {
-            break;
-        }
-    }
-    if(stopSearch)
-        return minCost;
-
-    return -1;
-}
-
-
-std::pair<int, int> chooseFastSlowServers(const WeightedG &graphNew, const std::vector<int> &fastServers, const std::vector<int> &slowServers,int nodes, int links, std::vector<int> &degreeHistOld) {
+std::pair<int, int> chooseFastSlowServers(const WeightedG &graphNew, const std::vector<int> &fastServers, const std::vector<int> &slowServers,std::vector<int> &degreeHistOld,
+                                          const int nodes, const int links, const int oldTriangles) {
     const int SLOW_LIMIT (slowServers.size());
     const int FAST_LIMIT (fastServers.size());
 
-    std::vector<int>choosenFast(FAST_LIMIT);
-    for(int i = 1; i < FAST_LIMIT; i++)
+    const int sizeFastCache((FAST_LIMIT < nodes) ? FAST_LIMIT : nodes);
+    std::vector<int>choosenFast(sizeFastCache);
+    for(int i = 1; i < sizeFastCache; i++)
         choosenFast[i] = i;
     std::vector<int>fastCache(choosenFast);
 
-    int size = std::abs(nodes - FAST_LIMIT);
-    std::vector<int>choosenSlow(size, 0);
-    for(int i = 1; i < size; i++)
+    int sizeSlowCache = nodes - FAST_LIMIT;
+    if(sizeSlowCache < 0)
+        sizeSlowCache = 0;
+
+    std::vector<int>choosenSlow(sizeSlowCache, 0);
+    for(int i = 1; i < sizeSlowCache; i++)
         choosenSlow[i] = i;
     std::vector<int>slowCache(choosenSlow);
 
-    int minCost = 1e9; //todo: set this to correct max value
+    int minCost = 1e9;
     bool stopSearch = false;
 
     while (true) {
@@ -204,10 +200,10 @@ std::pair<int, int> chooseFastSlowServers(const WeightedG &graphNew, const std::
 
             //print_choosen(fastServers, slowServers, choosenFast, choosenSlow);
             //printf("%d %d\n", choosenFast.size(), choosenSlow.size());
-            int cost (checkToplogy(graphNew, choosenServers, links, degreeHistOld));
+            int cost (checkToplogy(graphNew, choosenServers, links, degreeHistOld, minCost, oldTriangles));
             if(cost != -1 && cost < minCost) {
                 //printf("%d %d\n", choosenFast.size(), choosenSlow.size());
-                print_choosen(fastServers, slowServers, choosenFast, choosenSlow);
+//                print_choosen(fastServers, slowServers, choosenFast, choosenSlow);
                 minCost = cost;
                 stopSearch = true;
             }
@@ -256,20 +252,13 @@ std::pair<int, int> chooseFastSlowServers(const WeightedG &graphNew, const std::
 
 
 
-void findMinTopology(const WeightedG &graphNew, int nodes, int links, const std::vector<int> &fastServers, const std::vector<int> &slowServers,  std::vector<int> &degreeHistOld) {
-    if(nodes < fastServers.size()) {
-//        int minCost = chooseFastServers(graphNew, fastServers, nodes, degreeHistOld);
-//        if(minCost != -1) {
-//            printf("a)Fast servers %d, min cost %d %d\n", minCost, fastServers.size());
-//            return;
-//        }
-//        return;
+void findMinTopology(const WeightedG &graphNew, const std::vector<int> &fastServers, const std::vector<int> &slowServers,  std::vector<int> &degreeHistOld, const int nodes, const int links, const int oldTriangles) {
+    auto result(chooseFastSlowServers(graphNew, fastServers, slowServers, degreeHistOld, nodes, links, oldTriangles));
+
+    if(result.first != -1) {
+//        printf("Fast servers %d, min cost %d\n", result.second, result.first);
+        printf("%d %d", result.second, result.first);
     }
-
-    auto result(chooseFastSlowServers(graphNew, fastServers, slowServers, nodes, links, degreeHistOld));
-
-    if(result.first != -1)
-        printf("b)Fast servers %d, min cost %d\n", result.second, result.first);
     else
         printf("No topology was found!\n");
 }
@@ -279,8 +268,11 @@ void solution() {
     scanf("%d %d", &serversOld, &connectionsOld);
 
     UnweightedG graphOld(serversOld, std::list<int>());
+
     std::vector<int> degreeHist(serversOld, 0);
-    readDataGraph(graphOld, connectionsOld, degreeHist);
+    int oldTriangles = 0;
+
+    readDataGraphOld(graphOld, connectionsOld, degreeHist, oldTriangles);
 
     int serversNew, connectionsNew, fServers;
     scanf("%d %d %d", &serversNew, &connectionsNew, &fServers);
@@ -290,9 +282,10 @@ void solution() {
     readDataFS(fServers, fastServers, slowServers, serversNew);
 
     WeightedG graphNew(serversNew, std::list<std::pair<int, int>>());
-    readDataGraph2(graphNew, connectionsNew);
+    readDataGraphNew(graphNew, connectionsNew);
 
-    findMinTopology(graphNew, serversOld, connectionsOld, fastServers, slowServers, degreeHist);
+    findMinTopology(graphNew, fastServers, slowServers, degreeHist, serversOld, connectionsOld, oldTriangles);
+//    printf("%d", checkToplogy(graphNew, {false,false,false,true,true,true,false,false,false,true,false,true,false,false,false,false,true,false,false,true,false,true,false}, connectionsOld, degreeHist, 1e9, oldTriangles));
 //    printf("%d", checkToplogy(graphNew, {true,true,true,false,false,true,false,true,true,false,true,true,false,true,true}, connectionsOld, degreeHist));
 //    printf("%d", checkToplogy(graphNew, {false,true,true,false,false,false,true,true,true,true,false,false,false,true,true}, connectionsOld, degreeHist));
 //    printf("%d", checkToplogy(graphNew, {false, false,false,false,true,true,true,false, true,true}, connectionsOld, degreeHist));
@@ -366,7 +359,6 @@ int main() {
     start = clock();
 
     solution();
-
     end = clock();
     printf("\nExecution time: %f", double ((end - start) / 1000.));
 
